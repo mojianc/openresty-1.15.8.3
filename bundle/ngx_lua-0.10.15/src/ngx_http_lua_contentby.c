@@ -20,7 +20,7 @@
 
 static void ngx_http_lua_content_phase_post_read(ngx_http_request_t *r);
 
-
+//lua代码执行
 ngx_int_t
 ngx_http_lua_content_by_chunk(lua_State *L, ngx_http_request_t *r)
 {
@@ -47,10 +47,11 @@ ngx_http_lua_content_by_chunk(lua_State *L, ngx_http_request_t *r)
         dd("reset ctx");
         ngx_http_lua_reset_ctx(r, L, ctx);
     }
-
+    //标示当前进入了content_phase
     ctx->entered_content_phase = 1;
 
     /*  {{{ new coroutine to handle request */
+    //创建了一个新的lua协程
     co = ngx_http_lua_new_thread(r, L, &co_ref);
 
     if (co == NULL) {
@@ -61,6 +62,7 @@ ngx_http_lua_content_by_chunk(lua_State *L, ngx_http_request_t *r)
     }
 
     /*  move code closure to new coroutine */
+    //主协程的栈顶是需要执行的lua函数，通过lua_xmove将栈顶函数交换到新lua协程中
     lua_xmove(L, co, 1);
 
 #ifndef OPENRESTY_LUAJIT
@@ -70,6 +72,7 @@ ngx_http_lua_content_by_chunk(lua_State *L, ngx_http_request_t *r)
 #endif
 
     /*  save nginx request in coroutine globals table */
+    //把当前请求r赋值给新协程的全局变量中
     ngx_http_lua_set_req(co, r);
 
     ctx->cur_co_ctx = &ctx->entry_co_ctx;
@@ -118,7 +121,7 @@ ngx_http_lua_content_by_chunk(lua_State *L, ngx_http_request_t *r)
     } else {
         r->read_event_handler = ngx_http_block_reading;
     }
-
+    //运行新协程
     rc = ngx_http_lua_run_thread(L, r, ctx, 0);
 
     if (rc == NGX_ERROR || rc >= NGX_OK) {
@@ -126,10 +129,12 @@ ngx_http_lua_content_by_chunk(lua_State *L, ngx_http_request_t *r)
     }
 
     if (rc == NGX_AGAIN) {
+        //执行需要延后执行的协程，0表示上面传来的状态是NGX_AGAIN
         return ngx_http_lua_content_run_posted_threads(L, r, ctx, 0);
     }
 
     if (rc == NGX_DONE) {
+        //执行需要延后执行的协程，1表示上面传来的状态是NGX_DONE
         return ngx_http_lua_content_run_posted_threads(L, r, ctx, 1);
     }
 
@@ -168,12 +173,13 @@ ngx_http_lua_content_handler(ngx_http_request_t *r)
         dd("no content handler found");
         return NGX_DECLINED;
     }
-
+    //获取请求在ngx_http_module模块对应的上下文结构
     ctx = ngx_http_get_module_ctx(r, ngx_http_lua_module);
 
     dd("ctx = %p", ctx);
 
     if (ctx == NULL) {
+        //如果之前没有设置过上下文，调用ngx_http_lua_create_ctx创建上下文结构
         ctx = ngx_http_lua_create_ctx(r);
         if (ctx == NULL) {
             return NGX_HTTP_INTERNAL_SERVER_ERROR;
@@ -221,6 +227,7 @@ ngx_http_lua_content_handler(ngx_http_request_t *r)
     ctx->entered_content_phase = 1;
 
     dd("calling content handler");
+    //调用ngx_http_content_handler_file函数
     return llcf->content_handler(r);
 }
 
@@ -259,17 +266,18 @@ ngx_http_lua_content_handler_file(ngx_http_request_t *r)
     if (ngx_http_complex_value(r, &llcf->content_src, &eval_src) != NGX_OK) {
         return NGX_ERROR;
     }
-
+    //获取lua文件的路径
     script_path = ngx_http_lua_rebase_path(r->pool, eval_src.data,
                                            eval_src.len);
 
     if (script_path == NULL) {
         return NGX_ERROR;
     }
-
+    //获得lua_state,如果请求有自己的lua_state则使用请求自己的lua_state，否则使用ngx_http_lua_module模块的lua_state
     L = ngx_http_lua_get_lua_vm(r, NULL);
 
     /*  load Lua script file (w/ cache)        sp = 1 */
+    //加载代码
     rc = ngx_http_lua_cache_loadfile(r->connection->log, L, script_path,
                                      llcf->content_src_key);
     if (rc != NGX_OK) {
@@ -282,7 +290,7 @@ ngx_http_lua_content_handler_file(ngx_http_request_t *r)
 
     /*  make sure we have a valid code chunk */
     ngx_http_lua_assert(lua_isfunction(L, -1));
-
+    //创建协程执行代码的函数
     return ngx_http_lua_content_by_chunk(L, r);
 }
 

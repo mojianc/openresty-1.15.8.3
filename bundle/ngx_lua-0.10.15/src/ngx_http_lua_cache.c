@@ -41,6 +41,7 @@ ngx_http_lua_cache_load_code(ngx_log_t *log, lua_State *L,
 #endif
 
     /*  get code cache table */
+    //相当于LUA_REGISTRYINDEX[‘ngx_http_lua_code_cache_key’][‘key’]以ngx_http_lua_code_cache_key为索引从全局注册表表中查找key对于的value
     lua_pushlightuserdata(L, ngx_http_lua_lightudata_mask(
                           code_cache_key));
     lua_rawget(L, LUA_REGISTRYINDEX);    /*  sp++ */
@@ -53,7 +54,11 @@ ngx_http_lua_cache_load_code(ngx_log_t *log, lua_State *L,
     }
 
     lua_getfield(L, -1, key);    /*  sp++ */
-
+    /*
+     * 如果value存在并且为一个函数，因为这里的函数体是 return function() … end包裹的  所以在68行需要再调用lua_pcall执行下，以获得返回的函数并将返回的函数结果放到栈顶，最终将 LUA_REGISTRYINDEX从栈中移除
+     * 如果代码缓存关闭的时候，openresty会为每一个请求创建一个新的lua_state，这样请求来临的时候在全局变量table中找不到对应的代码缓存，需要到下一步ngx_http_lua_clfactory_loadfile中读取文件加载代码
+     * 如果代码缓存打开的时候，openresty会使用ngx_http_lua_module全局的lua_state，这样只有新的lua文件，在首次加载时需要到ngx_http_lua_clfactory_loadfile中读取文件加载代码，第二次来的时候便可以在lua_state对应的全局变量table中找到了
+     */
     if (lua_isfunction(L, -1)) {
 #ifdef OPENRESTY_LUAJIT
         lua_remove(L, -2);   /*  sp-- */
@@ -115,6 +120,7 @@ ngx_http_lua_cache_store_code(lua_State *L, const char *key)
 #endif
 
     /*  get code cache table */
+    //相当于 LUA_REGISTRYINDEX[‘ngx_http_lua_code_cache_key’][‘key’] = function xxx,将代码放入全局table中
     lua_pushlightuserdata(L, ngx_http_lua_lightudata_mask(
                           code_cache_key));
     lua_rawget(L, LUA_REGISTRYINDEX);
@@ -130,6 +136,7 @@ ngx_http_lua_cache_store_code(lua_State *L, const char *key)
     lua_setfield(L, -2, key); /* closure cache */
 
     /*  remove cache table, leave closure factory at top of stack */
+    //将 LUA_REGISTRYINDEX从栈中弹出
     lua_pop(L, 1); /* closure */
 
 #ifndef OPENRESTY_LUAJIT
@@ -247,6 +254,7 @@ ngx_http_lua_cache_loadfile(ngx_log_t *log, lua_State *L,
     rc = ngx_http_lua_cache_load_code(log, L, (char *) cache_key);
     if (rc == NGX_OK) {
         /*  code chunk loaded from cache, sp++ */
+        //代码在全局变量table中存在，则返回
         dd("Code cache hit! cache key='%s', stack top=%d, file path='%s'",
            cache_key, lua_gettop(L), script);
         return NGX_OK;
@@ -262,6 +270,7 @@ ngx_http_lua_cache_loadfile(ngx_log_t *log, lua_State *L,
        cache_key, lua_gettop(L), script);
 
     /*  load closure factory of script file to the top of lua stack, sp++ */
+    //用自定义的函数从文件中加载代码
     rc = ngx_http_lua_clfactory_loadfile(L, (char *) script);
 
     dd("loadfile returns %d (%d)", (int) rc, LUA_ERRFILE);
@@ -291,6 +300,7 @@ ngx_http_lua_cache_loadfile(ngx_log_t *log, lua_State *L,
 
     /*  store closure factory and gen new closure at the top of lua stack
      *  to code cache */
+    //把代码存放到lua_state的全局变量table中
     rc = ngx_http_lua_cache_store_code(L, (char *) cache_key);
     if (rc != NGX_OK) {
         err = "fail to generate new closure from the closure factory";

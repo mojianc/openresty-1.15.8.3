@@ -610,7 +610,7 @@ error:
 }
 #endif /* OPENRESTY_LUAJIT */
 
-
+//从文件中读取代码
 ngx_int_t
 ngx_http_lua_clfactory_loadfile(lua_State *L, const char *filename)
 {
@@ -722,6 +722,7 @@ ngx_http_lua_clfactory_loadfile(lua_State *L, const char *filename)
 #else
     ungetc(c, lf.f);
 #endif
+    //自定义的ngx_http_lua_clfactory_getF函数读取lua代码
     status = lua_load(L, ngx_http_lua_clfactory_getF, &lf,
                       lua_tostring(L, -1));
 

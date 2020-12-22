@@ -338,13 +338,17 @@ ngx_http_lua_new_thread(ngx_http_request_t *r, lua_State *L, int *ref)
 
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "lua creating new thread");
-
+    //获得了主协程栈中有多少元素
     base = lua_gettop(L);
-
+    /*获得全局变量中储存协程的table  LUA_REGISTRYINDEX[‘ngx_http_lua_code_coroutines_key’]
+      因为lua中协程也是GC的对象，会被lua系统进行垃圾回收，为了保证挂起的协程不会被GC掉，openresty使用了 LUA_REGISTRYINDEX[‘ngx_http_lua_code_coroutines_key’]来保存新创建的协程，在协程执行完毕后将协程从table
+      中删除，使的GC可以将这个协程垃圾回收掉
+    */
+    //获取全局变量中储存协程的table
     lua_pushlightuserdata(L, ngx_http_lua_lightudata_mask(
                           coroutines_key));
     lua_rawget(L, LUA_REGISTRYINDEX);
-
+    //创建新协程,并把其压入主协程的栈顶
     co = lua_newthread(L);
 
 #ifndef OPENRESTY_LUAJIT
@@ -363,14 +367,14 @@ ngx_http_lua_new_thread(ngx_http_request_t *r, lua_State *L, int *ref)
     ngx_http_lua_set_globals_table(co);
     /*  }}} */
 #endif /* OPENRESTY_LUAJIT */
-
+    //将创建的新协程保存对应的全局变量中
     *ref = luaL_ref(L, -2);
 
     if (*ref == LUA_NOREF) {
         lua_settop(L, base);  /* restore main thread stack */
         return NULL;
     }
-
+    //恢复主协程的栈空间大小
     lua_settop(L, base);
     return co;
 }
@@ -1087,7 +1091,7 @@ ngx_http_lua_run_thread(lua_State *L, ngx_http_request_t *r,
 
             ngx_http_lua_assert(orig_coctx->co_top + nrets
                                 == lua_gettop(orig_coctx->co));
-
+            //通过lua_resume执行协程中的函数
             rv = lua_resume(orig_coctx->co, nrets);
 
 #if (NGX_PCRE)
@@ -1104,7 +1108,7 @@ ngx_http_lua_run_thread(lua_State *L, ngx_http_request_t *r,
 
             ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                            "lua resume returned %d", rv);
-
+            //处理lua_resume的返回值
             switch (rv) {
             case LUA_YIELD:
                 /*  yielded, let event handler do the rest job */
@@ -1121,14 +1125,17 @@ ngx_http_lua_run_thread(lua_State *L, ngx_http_request_t *r,
 #endif
 
                 if (r->uri_changed) {
+                    //调用了ngx.redirect
                     return ngx_http_lua_handle_rewrite_jump(L, r, ctx);
                 }
 
                 if (ctx->exited) {
+                    //调用了ngx.exit
                     return ngx_http_lua_handle_exit(L, r, ctx);
                 }
 
                 if (ctx->exec_uri.len) {
+                    //调用了ngx.exec
                     return ngx_http_lua_handle_exec(L, r, ctx);
                 }
 
@@ -1194,7 +1201,7 @@ ngx_http_lua_run_thread(lua_State *L, ngx_http_request_t *r,
                                    "lua coroutine: yield");
 
                     ctx->co_op = NGX_HTTP_LUA_USER_CORO_NOP;
-
+                    //判断是不是主协程，或者是调用ngx.thread.spawn的协程
                     if (ngx_http_lua_is_thread(ctx)) {
                         ngx_http_lua_probe_thread_yield(r, ctx->cur_co_ctx->co);
 
@@ -1208,7 +1215,7 @@ ngx_http_lua_run_thread(lua_State *L, ngx_http_request_t *r,
 
                         ngx_http_lua_probe_info("set co running");
                         ctx->cur_co_ctx->co_status = NGX_HTTP_LUA_CO_RUNNING;
-
+                        //判断链表中有没有排队需要执行的协程，如果有的话，调用ngx_http_lua_post_thread将这个协程放到他们的后面，没有的话，直接让他自己恢复执行即可，回到 for 循环开头
                         if (ctx->posted_threads) {
                             ngx_http_lua_post_thread(r, ctx, ctx->cur_co_ctx);
                             ctx->cur_co_ctx = NULL;

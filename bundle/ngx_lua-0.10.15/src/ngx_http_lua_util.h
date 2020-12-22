@@ -293,13 +293,13 @@ ngx_http_lua_create_ctx(ngx_http_request_t *r)
     ngx_http_set_ctx(r, ctx, ngx_http_lua_module);
 
     llcf = ngx_http_get_module_loc_conf(r, ngx_http_lua_module);
-    if (!llcf->enable_code_cache && r->connection->fd != (ngx_socket_t) -1) {
+    if (!llcf->enable_code_cache && r->connection->fd != (ngx_socket_t) -1) {//如果lua_code_cache off
         lmcf = ngx_http_get_module_main_conf(r, ngx_http_lua_module);
 
 #ifdef DDEBUG
         dd("lmcf: %p", lmcf);
 #endif
-
+        //为请求初始化一个新的lua_state
         L = ngx_http_lua_init_vm(lmcf->lua, lmcf->cycle, r->pool, lmcf,
                                  r->connection->log, &cln);
         if (L == NULL) {
@@ -318,6 +318,7 @@ ngx_http_lua_create_ctx(ngx_http_request_t *r)
         ctx->vm_state = cln->data;
 
     } else {
+        //不分配新的lua_state,这样所有请求都会使用ngx_http_lua_module模块的lua_state
         ctx->vm_state = NULL;
     }
 

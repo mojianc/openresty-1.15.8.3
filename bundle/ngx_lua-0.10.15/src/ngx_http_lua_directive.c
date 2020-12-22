@@ -769,7 +769,8 @@ ngx_http_lua_content_by_lua(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         }
     }
 
-    llcf->content_handler = (ngx_http_handler_pt) cmd->post;
+    llcf->content_handler = (ngx_http_handler_pt) cmd->post; //设置回调函数为ngx_http_lua_content_handler_file
+                                                             //            ngx_http_lua_content_handler_inline
 
     lmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_lua_module);
 
@@ -781,7 +782,7 @@ ngx_http_lua_content_by_lua(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return NGX_CONF_ERROR;
     }
 
-    clcf->handler = ngx_http_lua_content_handler;
+    clcf->handler = ngx_http_lua_content_handler;//使用按需挂载处理函数的方式挂载处理函数，处理函数为ngx_http_lua_content_handler
 
     return NGX_CONF_OK;
 }
