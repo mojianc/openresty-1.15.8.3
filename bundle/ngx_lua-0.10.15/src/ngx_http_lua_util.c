@@ -228,14 +228,14 @@ ngx_http_lua_new_state(lua_State *parent_vm, ngx_cycle_t *cycle,
     size_t           old_cpath_len;
 
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, log, 0, "lua creating new vm state");
-
+    //注册一个状态机
     L = luaL_newstate();
     if (L == NULL) {
         return NULL;
     }
-
+    //加载lua库
     luaL_openlibs(L);
-
+    //获取lua中的全局表
     lua_getglobal(L, "package");
 
     if (!lua_istable(L, -1)) {
@@ -927,7 +927,7 @@ ngx_http_lua_reset_ctx(ngx_http_request_t *r, lua_State *L,
     ngx_memzero(&ctx->entry_co_ctx, sizeof(ngx_http_lua_co_ctx_t));
 
     ctx->entry_co_ctx.co_ref = LUA_NOREF;
-
+    //重新设置请求的上下文，将用于标示当前进入了那个阶段的变量重置为0
     ctx->entered_rewrite_phase = 0;
     ctx->entered_access_phase = 0;
     ctx->entered_content_phase = 0;
@@ -1110,6 +1110,7 @@ ngx_http_lua_run_thread(lua_State *L, ngx_http_request_t *r,
                            "lua resume returned %d", rv);
             //处理lua_resume的返回值
             switch (rv) {
+            //协程被挂起
             case LUA_YIELD:
                 /*  yielded, let event handler do the rest job */
                 /*  FIXME: add io cmd dispatcher here */
@@ -1144,7 +1145,7 @@ ngx_http_lua_run_thread(lua_State *L, ngx_http_request_t *r,
                  * lua_yield()
                  */
                 switch (ctx->co_op) {
-
+                //表示不再有协程需要处理了，跳出这一次循环，等待下一次的读写时间，或者定时器到期
                 case NGX_HTTP_LUA_USER_CORO_NOP:
                     dd("hit! it is the API yield");
 
@@ -1153,7 +1154,7 @@ ngx_http_lua_run_thread(lua_State *L, ngx_http_request_t *r,
                     ctx->cur_co_ctx = NULL;
 
                     return NGX_AGAIN;
-
+                //对应 ngx.thread.spawn被调用的情况
                 case NGX_HTTP_LUA_USER_THREAD_RESUME:
 
                     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
@@ -1169,7 +1170,7 @@ ngx_http_lua_run_thread(lua_State *L, ngx_http_request_t *r,
 #endif
 
                     break;
-
+                //对应有lua代码调用coroutine.resume，把当前线程标记为NGX_HTTP_LUA_USER_CORO_NOP
                 case NGX_HTTP_LUA_USER_CORO_RESUME:
                     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                                    "lua coroutine: resume");
@@ -1193,7 +1194,7 @@ ngx_http_lua_run_thread(lua_State *L, ngx_http_request_t *r,
                     }
 
                     break;
-
+                //对应coroutine.yield被调用的情况
                 default:
                     /* ctx->co_op == NGX_HTTP_LUA_USER_CORO_YIELD */
 
@@ -1215,7 +1216,8 @@ ngx_http_lua_run_thread(lua_State *L, ngx_http_request_t *r,
 
                         ngx_http_lua_probe_info("set co running");
                         ctx->cur_co_ctx->co_status = NGX_HTTP_LUA_CO_RUNNING;
-                        //判断链表中有没有排队需要执行的协程，如果有的话，调用ngx_http_lua_post_thread将这个协程放到他们的后面，没有的话，直接让他自己恢复执行即可，回到 for 循环开头
+                        //判断链表中有没有排队需要执行的协程，如果有的话，调用ngx_http_lua_post_thread将这个协程放到他们的后面，
+                        //没有的话，直接让他自己恢复执行即可，回到 for 循环开头
                         if (ctx->posted_threads) {
                             ngx_http_lua_post_thread(r, ctx, ctx->cur_co_ctx);
                             ctx->cur_co_ctx = NULL;
@@ -1230,9 +1232,8 @@ ngx_http_lua_run_thread(lua_State *L, ngx_http_request_t *r,
                     }
 
                     /* being a user coroutine that has a parent */
-
-                    nrets = lua_gettop(ctx->cur_co_ctx->co);
-
+                    //将当前需要执行的协程，由子协程切换为父协程
+                    nrets = lua_gettop(ctx->cur_co_ctx->co);                    
                     next_coctx = ctx->cur_co_ctx->parent_co_ctx;
                     next_co = next_coctx->co;
 
@@ -1259,7 +1260,7 @@ ngx_http_lua_run_thread(lua_State *L, ngx_http_request_t *r,
 
                 /* try resuming on the new coroutine again */
                 continue;
-
+            //协程执行结束,这里因为有ngx.thread API的存在，可能有多个协程在跑，需要判断父协程和所有的子协程的运行情况。
             case 0:
 
                 ngx_http_lua_cleanup_pending_operation(ctx->cur_co_ctx);
@@ -1275,15 +1276,16 @@ ngx_http_lua_run_thread(lua_State *L, ngx_http_request_t *r,
 
                 ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                                "lua light thread ended normally");
-
+                //判断是不是主协程
                 if (ngx_http_lua_is_entry_thread(ctx)) {
 
                     lua_settop(L, 0);
-
+                    //执行完毕的协程是主协程，从全局table中删除这个协程
                     ngx_http_lua_del_thread(r, L, ctx, ctx->cur_co_ctx);
 
                     dd("uthreads: %d", (int) ctx->uthreads);
-
+                    //判断还在运行的子协程个数，如果非0 返回NGX_AGAIN,
+                    //否则goto done 进行一些数据发送的相关工作并返回NGX_OK
                     if (ctx->uthreads) {
 
                         ctx->cur_co_ctx = NULL;
@@ -1293,7 +1295,7 @@ ngx_http_lua_run_thread(lua_State *L, ngx_http_request_t *r,
                     /* all user threads terminated already */
                     goto done;
                 }
-
+                //判断执行完毕的是不是子协程
                 if (ctx->cur_co_ctx->is_uthread) {
                     /* being a user thread */
 
@@ -1317,7 +1319,7 @@ ngx_http_lua_run_thread(lua_State *L, ngx_http_request_t *r,
                         {
                             return NGX_ERROR;
                         }
-
+                        //放入布尔值true
                         lua_pushboolean(ctx->cur_co_ctx->co, 1);
                         lua_insert(ctx->cur_co_ctx->co, 1);
 
@@ -1325,11 +1327,13 @@ ngx_http_lua_run_thread(lua_State *L, ngx_http_request_t *r,
                         ctx->cur_co_ctx = NULL;
                         return NGX_AGAIN;
                     }
-
+                    //由于协程已经执行完毕，从全局table中删除这个协程，可以被lua  GC掉
                     ngx_http_lua_del_thread(r, L, ctx, ctx->cur_co_ctx);
+                    //还在运行的子协程个数-1
                     ctx->uthreads--;
 
                     if (ctx->uthreads == 0) {
+                        //判断主协程是否还需要运行，是的话，返回NGX_AGAIN，否则goto done，进行一些数据发送的相关工作并返回NGX_OK
                         if (ngx_http_lua_entry_thread_alive(ctx)) {
                             ctx->cur_co_ctx = NULL;
                             return NGX_AGAIN;
@@ -1340,6 +1344,7 @@ ngx_http_lua_run_thread(lua_State *L, ngx_http_request_t *r,
                     }
 
                     /* some other user threads still running */
+                    //表示有子协程还在运行，返回NGX_AGAIN
                     ctx->cur_co_ctx = NULL;
                     return NGX_AGAIN;
                 }
@@ -1358,7 +1363,7 @@ user_co_done:
                     /* being a light thread */
                     goto no_parent;
                 }
-
+                //将当前需要执行的协程，由子协程切换为父协程
                 next_co = next_coctx->co;
 
                 /*
@@ -3840,6 +3845,7 @@ ngx_http_lua_init_vm(lua_State *parent_vm, ngx_cycle_t *cycle,
     }
 
     /* create new Lua VM instance */
+    //创建lua实例
     L = ngx_http_lua_new_state(parent_vm, cycle, lmcf, log);
     if (L == NULL) {
         return NULL;

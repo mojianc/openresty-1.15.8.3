@@ -72,7 +72,8 @@ ngx_http_lua_content_by_chunk(lua_State *L, ngx_http_request_t *r)
 #endif
 
     /*  save nginx request in coroutine globals table */
-    //把当前请求r赋值给新协程的全局变量中
+    //把当前请求r赋值给新协程的全局变量中,从而可以让lua执行获取和请求相关的一些函数，
+    //比如ngx.req.get_method()和ngx.set_method,ngx.req.stat_time()等
     ngx_http_lua_set_req(co, r);
 
     ctx->cur_co_ctx = &ctx->entry_co_ctx;
@@ -191,7 +192,7 @@ ngx_http_lua_content_handler(ngx_http_request_t *r)
     if (ctx->waiting_more_body) {
         return NGX_DONE;
     }
-
+    //用于确认之前是否进入过对应阶段
     if (ctx->entered_content_phase) {
         dd("calling wev handler");
         rc = ctx->resume_handler(r);

@@ -303,7 +303,7 @@ ngx_http_lua_init_worker(ngx_cycle_t *cycle)
     }
 
 #endif
-
+    //创建lua上下文
     ctx = ngx_http_lua_create_ctx(r);
     if (ctx == NULL) {
         goto failed;
@@ -311,8 +311,9 @@ ngx_http_lua_init_worker(ngx_cycle_t *cycle)
 
     ctx->context = NGX_HTTP_LUA_CONTEXT_INIT_WORKER;
     ctx->cur_co_ctx = NULL;
-    r->read_event_handler = ngx_http_block_reading;
-
+    //请求的读事件：从epoll删除该监控事件
+    r->read_event_handler = ngx_http_block_reading; 
+    //将r保存在request中
     ngx_http_lua_set_req(lmcf->lua, r);
 
     (void) lmcf->init_worker_handler(cycle->log, lmcf, lmcf->lua);

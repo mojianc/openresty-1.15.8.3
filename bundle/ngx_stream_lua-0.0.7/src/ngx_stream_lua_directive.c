@@ -694,7 +694,9 @@ ngx_stream_lua_init_worker_by_lua(ngx_conf_t *cf, ngx_command_t *cmd,
 
     value = cf->args->elts;
 
-    lmcf->init_worker_handler = (ngx_stream_lua_main_conf_handler_pt) cmd->post;
+    //"init_worker_by_lua_file" : ngx_stream_lua_init_worker_by_file
+    //"init_worker_by_lua" : ngx_stream_lua_init_worker_by_inline
+    lmcf->init_worker_handler = (ngx_stream_lua_main_conf_handler_pt) cmd->post; 
 
     if (cmd->post == ngx_stream_lua_init_worker_by_file) {
         name = ngx_stream_lua_rebase_path(cf->pool, value[1].data,

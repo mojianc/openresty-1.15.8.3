@@ -293,7 +293,8 @@ ngx_http_lua_create_ctx(ngx_http_request_t *r)
     ngx_http_set_ctx(r, ctx, ngx_http_lua_module);
 
     llcf = ngx_http_get_module_loc_conf(r, ngx_http_lua_module);
-    if (!llcf->enable_code_cache && r->connection->fd != (ngx_socket_t) -1) {//如果lua_code_cache off
+    //如果lua_code_cache off
+    if (!llcf->enable_code_cache && r->connection->fd != (ngx_socket_t) -1) {
         lmcf = ngx_http_get_module_main_conf(r, ngx_http_lua_module);
 
 #ifdef DDEBUG

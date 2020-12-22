@@ -112,6 +112,7 @@ ngx_http_lua_cache_load_code(ngx_log_t *log, lua_State *L,
  *         |     ...    |
  *
  * */
+//缓存lua代码
 static ngx_int_t
 ngx_http_lua_cache_store_code(lua_State *L, const char *key)
 {
