@@ -225,13 +225,31 @@ void
 ngx_http_lua_inject_socket_tcp_api(ngx_log_t *log, lua_State *L)
 {
     ngx_int_t         rc;
-
+    //解析参考：https://blog.csdn.net/liu0808/article/details/84061345
     lua_createtable(L, 0, 4 /* nrec */);    /* ngx.socket */
 
     lua_pushcfunction(L, ngx_http_lua_socket_tcp);
+    //    
+    //   2 -1    ngx_http_lua_socket_tcp
+    //   1 -2    {}   
+    //
     lua_pushvalue(L, -1);
+    //    
+    //   3 -1    ngx_http_lua_socket_tcp
+    //   2 -2    ngx_http_lua_socket_tcp
+    //   1 -3    {}   
+    //
+
     lua_setfield(L, -3, "tcp");
+    //    
+    //   2 -1    ngx_http_lua_socket_tcp
+    //   1 -2    {"tcp"=ngx_http_lua_socket_tcp}   
+    //
+ 
     lua_setfield(L, -2, "stream");
+    //    
+    //   1 -1    {"tcp"=ngx_http_lua_socket_tcp, "stream" = ngx_http_lua_socket_tcp}   
+    //
 
     {
         const char  buf[] = "local sock = ngx.socket.tcp()"
@@ -239,6 +257,9 @@ ngx_http_lua_inject_socket_tcp_api(ngx_log_t *log, lua_State *L)
                             " if ok then return sock else return nil, err end";
 
         rc = luaL_loadbuffer(L, buf, sizeof(buf) - 1, "=ngx.socket.connect");
+        //   2 -1    "local sock ...." 
+        //   1 -2    {"tcp"=ngx_http_lua_socket_tcp, "stream" = ngx_http_lua_socket_tcp}   
+        //
     }
 
     if (rc != NGX_OK) {
@@ -248,9 +269,15 @@ ngx_http_lua_inject_socket_tcp_api(ngx_log_t *log, lua_State *L)
 
     } else {
         lua_setfield(L, -2, "connect");
+        //  
+        //   1 -1    {"tcp"=ngx_http_lua_socket_tcp, "stream" = ngx_http_lua_socket_tcp,  "connect"="local sock ...."}   
+        //
     }
 
     lua_setfield(L, -2, "socket");
+    //  
+    //   1 -1    {"socket"={"tcp"=ngx_http_lua_socket_tcp, "stream" = ngx_http_lua_socket_tcp,  "connect"="local sock ...."}}   
+    //
 
     /* {{{req socket object metatable */
     lua_pushlightuserdata(L, ngx_http_lua_lightudata_mask(
@@ -272,7 +299,12 @@ ngx_http_lua_inject_socket_tcp_api(ngx_log_t *log, lua_State *L)
     lua_pushvalue(L, -1);
     lua_setfield(L, -2, "__index");
 
-    lua_rawset(L, LUA_REGISTRYINDEX);
+    //lua_rawset和lua_settable(lua_State* L, int index)类似，但是直接赋值
+    //lua_settable就是把表在lua堆栈中的值弹出来，index 是table 在堆栈中的位置，
+    //假如 table 在 -3, 则key 应该是 -2，value 是 -1
+    //相当于 table[key] = value.
+
+    lua_rawset(L, LUA_REGISTRYINDEX); //直接赋值(这个函数不会触发 "newindex" 事件的元方法 )  LUA_REGISTRYINDEX是Lua注册表的伪索引
     /* }}} */
 
     /* {{{raw req socket object metatable */
@@ -348,7 +380,8 @@ ngx_http_lua_inject_socket_tcp_api(ngx_log_t *log, lua_State *L)
 
     lua_pushvalue(L, -1);
     lua_setfield(L, -2, "__index");
-    lua_rawset(L, LUA_REGISTRYINDEX);
+
+    lua_rawset(L, LUA_REGISTRYINDEX); 
     /* }}} */
 
     /* {{{upstream userdata metatable */

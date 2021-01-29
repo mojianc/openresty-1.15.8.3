@@ -792,7 +792,9 @@ ngx_http_lua_inject_ngx_api(lua_State *L, ngx_http_lua_main_conf_t *lmcf,
     lua_setfield(L, -2, "ngx"); /* ngx package loaded */
     lua_pop(L, 2);
 
-    lua_setglobal(L, "ngx");
+    //#define lua_register(L,n,f) (lua_pushcfunction(L, (f)), lua_setglobal(L, (n)))
+    //注册函数的底层，其实就是调用lua_setglobal
+    lua_setglobal(L, "ngx"); //设置lua全局变量ngx
 
     ngx_http_lua_inject_coroutine_api(log, L);
 
